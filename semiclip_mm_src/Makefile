@@ -27,8 +27,8 @@ OUT ?= semiclip.so
 # HLSDK_ROOT ?= /mnt/d/scripting/hlsdk-master
 # HL1MM_ROOT ?= /mnt/d/scripting/metamod-hl1-master
 #
-HLSDK_ROOT ?= ./hlsdk-master
-HL1MM_ROOT ?= ./metamod-hl1-master
+HLSDK_ROOT ?= ./hlsdk
+HL1MM_ROOT ?= ./metamod-hl1
 
 SRC += linux_compat.c
 SRC += semiclip.cpp
