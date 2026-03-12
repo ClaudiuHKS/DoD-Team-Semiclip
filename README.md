@@ -5,3 +5,6 @@ Day of Defeat — A *Meta Mod* Team Semiclip
 * Might work on other HL1-based games too.
 * Works on `steam_legacy` and `beta`.
 * You can see it or read more details about it @ [AlliedModders](https://forums.alliedmods.net/showthread.php?t=352371).
+## Contributors ##
+- [s1lentq](https://github.com/s1lentq)
+- [Fysiks](https://github.com/fysiks1)
