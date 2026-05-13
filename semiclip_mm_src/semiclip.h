@@ -20,7 +20,7 @@
 #endif
 
 #define SEMICLIP_VERSION        "2.2+"
-#define SEMICLIP_VERSION_MS     2,2,0,1
+#define SEMICLIP_VERSION_MS     2,2,0,2
 #define SEMICLIP_AUTHOR         "s1lent & claudiuhks"
 #define SEMICLIP_TITLE          "Team Semiclip"
 #define SEMICLIP_TITLE_MS       "MetaMod " SEMICLIP_TITLE

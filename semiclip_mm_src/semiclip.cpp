@@ -394,7 +394,7 @@ void PM_Move(::playermove_s* pMove, int)
             pMove->physents[Entities++] = pMove->physents[Iter];
     }
     pMove->numphysent = Entities;
-    RETURN_META(::MRES_IGNORED);
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
 }
 
 bool isOut(::edict_s* pEntity, ::edict_s* pHost)
@@ -445,7 +445,8 @@ int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, :
         }
         }
     }
-    RETURN_META_VALUE(::MRES_IGNORED, false);
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
+    return false;
 }
 
 void StartFrame()
@@ -477,7 +478,7 @@ void StartFrame()
         ::g_execTime = 0.f;
         ::g_pApiFuncTable->pfnStartFrame = NULL;
     }
-    RETURN_META(::MRES_IGNORED);
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
 }
 
 void ServerActivate_Post(::edict_s* pEntities, int, int)
@@ -486,7 +487,7 @@ void ServerActivate_Post(::edict_s* pEntities, int, int)
     ::g_execTime = ::gpGlobals->time + .1f; /// Executing cfg. files too soon doesn't work.
     ::g_pApiFuncTable->pfnStartFrame = ::StartFrame;
     ::g_pApiFuncTable_Post->pfnClientPutInServer = ::OnClientPutInServer_Post;
-    RETURN_META(::MRES_IGNORED);
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
 }
 
 void OnClientPutInServer_Post(::edict_s*)
@@ -542,5 +543,5 @@ void OnClientPutInServer_Post(::edict_s*)
     }
     }
     ::g_pApiFuncTable_Post->pfnClientPutInServer = NULL;
-    RETURN_META(::MRES_IGNORED);
+    ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
 }

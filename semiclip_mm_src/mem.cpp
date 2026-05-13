@@ -1,20 +1,20 @@
 
 #include "mem.h"
 
-void allowFullMemAccess ( void * pAddr, ::size_t Size )
+void allowFullMemAccess(void* pAddr, ::size_t Size)
 {
 #ifndef __linux__
     static unsigned long Access;
-    ::VirtualProtect ( pAddr, Size, PAGE_EXECUTE_READWRITE, &Access );
+    ::VirtualProtect(pAddr, Size, PAGE_EXECUTE_READWRITE, &Access);
 #else
     static long Page;
     static ::size_t Addr, Begin, End;
 
-    Addr = ( ::size_t ) pAddr;
-    Page = ::sysconf ( _SC_PAGESIZE ) - true;
+    Addr = (::size_t)pAddr;
+    Page = ::sysconf(_SC_PAGESIZE) - true;
     Begin = Addr & ~Page; /// Would turn '0xABC777AB' into '0xABC77000'.
-    End = ( Addr + Size + Page ) & ~Page; /// Would turn '0xABC777AB' into '0xABC78000', '0xABC79000', ...
-    ::mprotect ( Begin, End - Begin /** 0x1000(4096), 0x2000(8192), ... */, PROT_READ | PROT_WRITE | PROT_EXEC );
+    End = (Addr + Size + Page) & ~Page; /// Would turn '0xABC777AB' into '0xABC78000', '0xABC79000', ...
+    ::mprotect(Begin, End - Begin /** 0x1000(4096), 0x2000(8192), ... */, PROT_READ | PROT_WRITE | PROT_EXEC);
 #endif
 }
 
