@@ -45,6 +45,7 @@
 ::cvar_s* g_pPatch = NULL;
 ::cvar_s* g_pDying = NULL;
 ::cvar_s* g_pObserver = NULL;
+bool g_reHLDS = false;
 bool g_isEnabled = false;
 unsigned char g_Type = false;
 bool g_onHead = false;
@@ -56,6 +57,69 @@ unsigned char g_obsType = false;
 ::size_t g_obsOffsNum = false;
 void* g_pPatchAddr = NULL;
 float g_execTime = 0.f;
+::SourceHook::CVector < ::sigdata_s > g_Sigs{ };
+
+bool readCfg(bool forLinux)
+{
+    char Buffer[256], Game[64];
+    ::g_engfuncs.pfnGetGameDir(Game);
+    ::_snprintf(Buffer, sizeof Buffer, "%s/addons/semiclip/semiclip.ini", Game);
+#ifndef __linux__
+    ::_iobuf* pConfig;
+    ::fopen_s(&pConfig, Buffer, "r");
+#else
+    ::FILE* pConfig = ::fopen(Buffer, "r");
+#endif
+    if (!pConfig)
+        return false;
+    ::SourceHook::String Line;
+    ::sigdata_s sigData;
+    bool Linux;
+    while (::fgets(Buffer, sizeof Buffer, pConfig))
+    {
+        Line = Buffer;
+        Line.trim();
+        if (Line.empty() || ';' == Line[0] || '/' == Line[0])
+            continue;
+        else if (false == Line.icmp("[Linux]"))
+        {
+            Linux = true;
+            continue;
+        }
+        else if (false == Line.icmp("[Windows]"))
+        {
+            Linux = false;
+            continue;
+        }
+        if (Linux != forLinux)
+            continue;
+        if (false == Line.icmpn("Sig:", 4))
+        {
+            sigData.IsSymbol = false;
+            ::vectorizeSignature(Line, sigData.Signature);
+        }
+        else if (false == Line.icmpn("OffsDec:", 8))
+        {
+            Line.erase(false, 8);
+            Line.trim();
+            sigData.Offs = ::strtoull(Line.c_str(), NULL, int(10));
+        }
+        else if (false == Line.icmpn("OffsHex:", 8))
+        {
+            Line.erase(false, 8);
+            Line.trim();
+            sigData.Offs = ::strtoull(Line.c_str(), NULL, int(16));
+        }
+        else
+        {
+            sigData.IsSymbol = true;
+            sigData.Symbol = Line;
+        }
+        ::g_Sigs.push_back(sigData);
+    }
+    ::fclose(pConfig);
+    return true;
+}
 
 C_DLLEXPORT int GetEntityAPI2(::DLL_FUNCTIONS* pApiFuncTable, int*)
 {
@@ -81,7 +145,8 @@ C_DLLEXPORT int Meta_Query(const char*, ::plugin_info_t** ppPlugInfo, ::meta_uti
     return true;
 }
 
-C_DLLEXPORT int Meta_Attach(::PLUG_LOADTIME, ::META_FUNCTIONS* pMetaFuncTable, ::meta_globals_s* pMetaGlobals, ::gamedll_funcs_t* pGameDllFuncs)
+C_DLLEXPORT int Meta_Attach
+(::PLUG_LOADTIME, ::META_FUNCTIONS* pMetaFuncTable, ::meta_globals_s* pMetaGlobals, ::gamedll_funcs_t* pGameDllFuncs)
 {
     ::gpMetaGlobals = pMetaGlobals;
     ::gpGamedllFuncs = pGameDllFuncs;
@@ -124,38 +189,81 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
     ::memcpy(&::g_engfuncs, pEngineFuncs, sizeof(::enginefuncs_s));
     ::gpGlobals = pGlobalVars;
 #ifdef __linux__
+    if (false == ::readCfg(true))
+    {
+        pEngineFuncs->pfnServerPrint("[WARNING] Team Semiclip: Can't read 'addons/semiclip/semiclip.ini'.\n");
+        return;
+    }
     ::Dl_info memInfo;
-    ::dladdr(pGlobalVars, &memInfo); /// engine_i486.so file.
+    ::dladdr(pGlobalVars /** engine_i486.so file. */, &memInfo);
     auto pLib = ::dlopen(memInfo.dli_fname, RTLD_LAZY | RTLD_NOLOAD | RTLD_NODELETE);
     if (!pLib)
         pLib = ::dlopen(memInfo.dli_fname, RTLD_NOW);
-    auto pAddr = (const unsigned char*) ::dlsymComplex(pLib, SV_ClipToLinks);
+    auto pAddr = (const unsigned char*) ::dlsymComplex(pLib, ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Symbol.c_str()); /// By symbol (ReHLDS).
+    if (pAddr)
+        ::g_reHLDS = true;
+    else
+        pAddr = (const unsigned char*) ::dlsymComplex(pLib, ::g_Sigs[::sig_e::SV_ClipToLinks].Symbol.c_str()); /// By symbol (non-ReHLDS).
     ::dlclose(pLib);
     if (!pAddr)
-    {
+    { /// No 'SV_ClipToLinks' symbol found. Search by signature.
         struct ::stat memData;
         ::stat(memInfo.dli_fname, &memData);
-        ::SourceHook::CVector < unsigned char > Vectorized;
-        ::SourceHook::String Signature = SV_ClipToLinks_Sig;
-        ::vectorizeSignature(Signature, Vectorized);
         ::size_t Addr;
-        if (::findInMemory(memInfo.dli_fbase, memData.st_size, Vectorized, &Addr, true))
+        if (::findInMemory(memInfo.dli_fbase, memData.st_size, ::g_Sigs[::sig_e::SV_ClipToLinks_Sig].Signature, &Addr, true)) /// By signature.
             pAddr = (const unsigned char*)Addr;
     }
 #else
+    if (false == ::readCfg(false))
+    {
+        pEngineFuncs->pfnServerPrint("[WARNING] Team Semiclip: Can't read 'addons/semiclip/semiclip.ini'.\n");
+        return;
+    }
     ::_MEMORY_BASIC_INFORMATION memInfo;
-    ::VirtualQuery(pGlobalVars, &memInfo, sizeof memInfo);
+    ::VirtualQuery(pGlobalVars /** swds.dll file. */, &memInfo, sizeof memInfo);
     auto pDosHdr = (::_IMAGE_DOS_HEADER*)memInfo.AllocationBase;
     auto pNtHdr = (::_IMAGE_NT_HEADERS*)((::size_t)pDosHdr + (::size_t)pDosHdr->e_lfanew);
-    auto pAddr = ::findStrPush((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, (const unsigned char*)SV_ClipToLinks, sizeof SV_ClipToLinks);
+    auto pAddr = ::findStrPush((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage,
+        (const unsigned char*) ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Symbol.c_str(),
+        ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Symbol.size()); /// Function approx. addr. by const. string (ReHLDS).
 #endif
+#ifdef __linux__
     if (!pAddr)
-        return;
-#ifndef __linux__
-    pAddr = ::memCmp(pAddr - 512, 2048, SOLID_SLIDEBOX, 2);
+        return; /// 'SV_ClipToLinks' function is missing [Linux] (both signature and symbol failed). Stop.
 #else
-    pAddr = ::memCmp(pAddr, 2048, SOLID_SLIDEBOX, 2);
+    if (!pAddr)
+    { /// Maybe running Windows non-ReHLDS.
+        pAddr = ::findStrPush((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage,
+            (const unsigned char*) ::g_Sigs[::sig_e::SV_ClipToLinks].Symbol.c_str(),
+            ::g_Sigs[::sig_e::SV_ClipToLinks].Symbol.size()); /// Function approx. addr. by const. string (non-ReHLDS).
+        if (!pAddr)
+        {
+            pAddr = (const unsigned char*) ::GetProcAddress((::HINSTANCE__*)memInfo.AllocationBase, ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Symbol.c_str());
+            if (pAddr)
+                ::g_reHLDS = true;
+            else
+            {
+                pAddr = (const unsigned char*) ::GetProcAddress((::HINSTANCE__*)memInfo.AllocationBase, ::g_Sigs[::sig_e::SV_ClipToLinks].Symbol.c_str());
+                if (!pAddr)
+                {
+                    ::size_t Addr;
+                    if (::findInMemory((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::sig_e::SV_ClipToLinks_Sig].Signature, &Addr, true)) /// By signature.
+                        pAddr = (const unsigned char*)Addr;
+                    else
+                        return; /// 'SV_ClipToLinks' function is missing (Windows). Stop.
+                }
+            }
+        }
+    }
+    else
+        ::g_reHLDS = true;
 #endif
+    if (false == ::g_reHLDS)
+        pAddr = ::memCmp(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Offs,
+            ::g_Sigs[::sig_e::bytesRange].Offs, SOLID_SLIDEBOX, ::g_Sigs[::sig_e::solidByte].Offs);
+    else
+        pAddr = ::memCmp(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Offs,
+            ::g_Sigs[::sig_e::bytesRange].Offs, SOLID_SLIDEBOX, ::g_Sigs[::sig_e::solidByteRe].Offs);
     if (!pAddr)
         return;
     ::g_pPatchAddr = (void*)pAddr;
@@ -173,14 +281,18 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
 
 void makePatch()
 {
-    static char Data[SEMICLIP_PATCH_BYTES];
+    static char Data[32];
     if (!::g_origPatch.addr && ::g_pPatchAddr)
     {
         ::g_origPatch.addr = ::g_pPatchAddr;
-        ::memcpy(::g_origPatch.data, ::g_pPatchAddr, SEMICLIP_PATCH_BYTES);
-        ::memcpy(Data, ::g_pPatchAddr, SEMICLIP_PATCH_BYTES);
-        *(Data + 2) = SOLID_NOT;
-        ::memCpy(::g_pPatchAddr, Data, SEMICLIP_PATCH_BYTES);
+        ::memcpy(::g_origPatch.data, ::g_pPatchAddr,
+            false == ::g_reHLDS ? ::g_Sigs[::sig_e::patchBytes].Offs : ::g_Sigs[::sig_e::patchBytesRe].Offs);
+        ::memcpy(Data, ::g_pPatchAddr,
+            false == ::g_reHLDS ? ::g_Sigs[::sig_e::patchBytes].Offs : ::g_Sigs[::sig_e::patchBytesRe].Offs);
+        *(Data + (false == ::g_reHLDS ? ::g_Sigs[::sig_e::solidByte].Offs : ::g_Sigs[::sig_e::solidByteRe].Offs)) =
+            SOLID_NOT;
+        ::memCpy(::g_pPatchAddr, Data,
+            false == ::g_reHLDS ? ::g_Sigs[::sig_e::patchBytes].Offs : ::g_Sigs[::sig_e::patchBytesRe].Offs);
     }
 }
 
@@ -188,7 +300,8 @@ void delPatch()
 {
     if (::g_origPatch.addr)
     {
-        ::memCpy(::g_origPatch.addr, ::g_origPatch.data, SEMICLIP_PATCH_BYTES);
+        ::memCpy(::g_origPatch.addr, ::g_origPatch.data,
+            false == ::g_reHLDS ? ::g_Sigs[::sig_e::patchBytes].Offs : ::g_Sigs[::sig_e::patchBytesRe].Offs);
         ::g_origPatch.addr = NULL;
     }
 }
@@ -356,8 +469,10 @@ bool canPass_Pack(::edict_s* pHost, ::edict_s* pPlayer)
     }
     if (::g_teamType)
     {
-        hTeam = ::g_teamOffsNum ? (unsigned char)(*(int*)(((unsigned char*)(pHost->pvPrivateData)) + ::g_teamOffsNum)) : (unsigned char)pHVar->team;
-        pTeam = ::g_teamOffsNum ? (unsigned char)(*(int*)(((unsigned char*)(pPlayer->pvPrivateData)) + ::g_teamOffsNum)) : (unsigned char)pPVar->team;
+        hTeam = ::g_teamOffsNum ? (unsigned char)(*(int*)(((unsigned char*)(pHost->pvPrivateData)) + ::g_teamOffsNum)) :
+            (unsigned char)pHVar->team;
+        pTeam = ::g_teamOffsNum ? (unsigned char)(*(int*)(((unsigned char*)(pPlayer->pvPrivateData)) + ::g_teamOffsNum)) :
+            (unsigned char)pPVar->team;
     }
     else
     {
@@ -408,7 +523,8 @@ bool isOut(::edict_s* pEntity, ::edict_s* pHost)
         hAbsMax->x < eAbsMin->x || hAbsMax->y < eAbsMin->y || hAbsMax->z < eAbsMin->z;
 }
 
-int AddToFullPack_Post(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, ::edict_s* pHost, int hostFlags, int isPlayer, unsigned char* pSet)
+int AddToFullPack_Post
+(::entity_state_s* pState, int eIdx, ::edict_s* pEntity, ::edict_s* pHost, int hostFlags, int isPlayer, unsigned char* pSet)
 {
     static float Dis;
     if (pState && pHost && pEntity && isPlayer && pHost != pEntity && ::canPass_Pack(pHost, pEntity))

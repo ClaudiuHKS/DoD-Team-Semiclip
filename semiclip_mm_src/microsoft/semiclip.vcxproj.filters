@@ -60,5 +60,8 @@
     <None Include="..\Makefile">
       <Filter>Miscellaneous Files</Filter>
     </None>
+    <None Include="..\semiclip.ini">
+      <Filter>Miscellaneous Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

@@ -7,20 +7,10 @@
 #include "pm_defs.h"
 #include "entity_state.h"
 #include "mem.h"
-#ifdef __linux__
-#   include "Memory.h" /// IDA signature to address.
-#endif
-
-#define SEMICLIP_PATCH_BYTES    3
-#ifndef __linux__
-#   define SV_ClipToLinks       "Trigger in clipping list" /// A string.
-#else /// Linux stuff below this line.
-#   define SV_ClipToLinks       "SV_ClipToLinks" /// A symbol.
-#   define SV_ClipToLinks_Sig   "55 57 56 53 81 ? ? ? ? ? 8B ? ? ? ? ? ? 8B ? ? ? ? ? ? 8B ? ? 8D" /// A signature.
-#endif
+#include "Memory.h" /// IDA signature to address.
 
 #define SEMICLIP_VERSION        "2.2+"
-#define SEMICLIP_VERSION_MS     2,2,0,2
+#define SEMICLIP_VERSION_MS     2,2,0,3
 #define SEMICLIP_AUTHOR         "s1lent & claudiuhks"
 #define SEMICLIP_TITLE          "Team Semiclip"
 #define SEMICLIP_TITLE_MS       "MetaMod " SEMICLIP_TITLE
@@ -34,12 +24,31 @@
 #define F_EToI(E) ((::size_t)       (E - ::g_pEntities))
 #define F_IToE(I) ((::edict_s *)    (::g_pEntities + I))
 
+enum sig_e : unsigned char {
+    patchBytes = false,
+    patchBytesRe,
+    solidByte,
+    solidByteRe,
+    SV_ClipToLinks,
+    SV_ClipToLinks_Re,
+    SV_ClipToLinks_Sig,
+    bytesRange,
+    bytesBackPos,
+};
+
 typedef struct patch_s {
     void* addr = NULL;
-    char data[SEMICLIP_PATCH_BYTES]{ };
+    char data[32]{ };
     patch_s();
     ~patch_s();
 } patch_t;
+
+typedef struct sigdata_s {
+    ::SourceHook::String Symbol{ };
+    ::SourceHook::CVector < unsigned char > Signature{ };
+    bool IsSymbol = false;
+    ::size_t Offs = false;
+} sigdata_t;
 
 C_DLLEXPORT int GetEntityAPI2(::DLL_FUNCTIONS*, int*);
 C_DLLEXPORT int GetEntityAPI2_Post(::DLL_FUNCTIONS*, int*);
@@ -48,6 +57,7 @@ C_DLLEXPORT int Meta_Attach(::PLUG_LOADTIME, ::META_FUNCTIONS*, ::meta_globals_s
 C_DLLEXPORT int Meta_Detach(::PLUG_LOADTIME, ::PL_UNLOAD_REASON);
 C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s*, ::globalvars_t*);
 
+bool readCfg(bool);
 void makePatch();
 void delPatch();
 bool validObsTarget(::edict_s*);
@@ -94,6 +104,7 @@ extern ::cvar_s* g_pPatch;
 extern ::cvar_s* g_pSolid;
 extern ::cvar_s* g_pDying;
 extern ::cvar_s* g_pObserver;
+extern bool g_reHLDS;
 extern bool g_isEnabled;
 extern unsigned char g_Type;
 extern bool g_onHead;
@@ -106,5 +117,6 @@ extern unsigned char g_obsType;
 extern ::size_t g_obsOffsNum;
 extern void* g_pPatchAddr;
 extern float g_execTime;
+extern ::SourceHook::CVector < ::sigdata_s > g_Sigs;
 
 #endif

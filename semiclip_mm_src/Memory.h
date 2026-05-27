@@ -1,5 +1,6 @@
 
-#pragma once
+#ifndef _MEMSRCH_H_
+#define _MEMSRCH_H_
 
 #include <stdlib.h>
 
@@ -39,3 +40,5 @@ void displayVectorizedSignature(const ::SourceHook::CVector < unsigned char > vS
 
 void displayVectorizedSignature(const unsigned char* pSig, ::size_t SigSize,
     bool LowerCase, int (*displayFunc) (const char*, ...)) noexcept;
+
+#endif
