@@ -18,13 +18,7 @@ void allowFullMemAccess(void* pAddr, ::size_t Size)
 #endif
 }
 
-void memCpy(void* pAddr, const void* pMem, ::size_t Size)
-{
-    ::allowFullMemAccess(pAddr, Size);
-    ::memcpy(pAddr, pMem, Size);
-}
-
-const unsigned char* memCmp(const unsigned char* pPos, ::size_t Range, int Ref, ::size_t Pos)
+const unsigned char* findMem(const unsigned char* pPos, ::size_t Range, ::size_t Ref, ::size_t Pos)
 {
     auto pEnd = pPos + Range;
     for (; pPos < pEnd; ++pPos)
@@ -34,38 +28,50 @@ const unsigned char* memCmp(const unsigned char* pPos, ::size_t Range, int Ref, 
 }
 
 #ifndef __linux__
-bool memCmpChr(const unsigned char* pAddr, const unsigned char* pPattern, const unsigned char* pEnd)
+const unsigned char* findStr
+(::_IMAGE_DOS_HEADER* pDosHdr, ::_IMAGE_NT_HEADERS* pNtHdr, const char* pString, ::size_t Len)
 {
-    for (auto pChr = pPattern; pChr < pEnd; ++pChr, ++pAddr)
+    auto pSec = IMAGE_FIRST_SECTION(pNtHdr);
+    if (!pSec)
+        return NULL;
+    unsigned long Size;
+    unsigned short Sec;
+    ::size_t strAddr, Iter;
+    const unsigned char* pBeg;
+    auto Secs = pNtHdr->FileHeader.NumberOfSections;
+    for (Sec = false; Sec < Secs; Sec++)
     {
-        if (*pChr == *pAddr || *pChr == (unsigned char)'\x2A')
-            continue;
-        return false;
+        pBeg = (const unsigned char*)pDosHdr + pSec[Sec].VirtualAddress;
+        Size = pSec[Sec].Misc.VirtualSize;
+        for (Iter = false; Iter < Size - Len; Iter++)
+            if (false == ::memcmp(pBeg + Iter, pString, Len))
+            {
+                strAddr = (::size_t)(pBeg + Iter);
+                goto keepUp;
+            }
     }
-    return true;
-}
-
-const unsigned char* memFindRefChr(const unsigned char* pPos, const unsigned char* pEnd, unsigned char Code, ::size_t Ref, ::size_t Pos)
-{
-    for (; pPos < pEnd; ++pPos)
-        if (*pPos == Code && *(unsigned*)(pPos + Pos) == Ref)
-            return pPos;
     return NULL;
-}
-
-const unsigned char* findPattern(const unsigned char* pPos, ::size_t Range, const unsigned char* pPattern, ::size_t Size)
-{
-    auto pPatternEnd = pPattern + Size;
-    for (auto pEnd = pPos + Range - Size; pPos < pEnd; ++pPos)
-        if (::memCmpChr(pPos, pPattern, pPatternEnd))
-            return pPos;
+keepUp:
+    ::size_t Addr;
+    const unsigned char* pPos;
+    for (Sec = false; Sec < Secs; Sec++)
+    {
+        if (!(pSec[Sec].Characteristics & IMAGE_SCN_MEM_EXECUTE))
+            continue;
+        pBeg = (const unsigned char*)pDosHdr + pSec[Sec].VirtualAddress;
+        Size = pSec[Sec].Misc.VirtualSize;
+        for (Iter = false; Iter < Size - 5; Iter++)
+        {
+            pPos = pBeg + Iter;
+            if (pPos[0] == 0x68)
+            {
+                Addr = *(::size_t*)(pPos + true);
+                if (Addr == strAddr)
+                    return pPos;
+            }
+        }
+    }
     return NULL;
-}
-
-const unsigned char* findStrPush(const unsigned char* pAddr, ::size_t Size, const unsigned char* pString, ::size_t lenZero)
-{
-    auto pRef = ::findPattern(pAddr, Size, pString, lenZero);
-    return ::memFindRefChr(pAddr, pAddr + Size - 5, (unsigned char)'\x68', (::size_t)pRef, 1);
 }
 #else
 void* dlsymComplex(void* pLib, const char* pSym)

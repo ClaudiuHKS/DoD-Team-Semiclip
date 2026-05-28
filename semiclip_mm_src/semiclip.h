@@ -10,7 +10,7 @@
 #include "Memory.h" /// IDA signature to address.
 
 #define SEMICLIP_VERSION        "2.2+"
-#define SEMICLIP_VERSION_MS     2,2,0,3
+#define SEMICLIP_VERSION_MS     2,2,0,4
 #define SEMICLIP_AUTHOR         "s1lent & claudiuhks"
 #define SEMICLIP_TITLE          "Team Semiclip"
 #define SEMICLIP_TITLE_MS       "MetaMod " SEMICLIP_TITLE
@@ -25,29 +25,21 @@
 #define F_IToE(I) ((::edict_s *)    (::g_pEntities + I))
 
 enum sig_e : unsigned char {
-    patchBytes = false,
-    patchBytesRe,
-    solidByte,
+    solidByte = false,
     solidByteRe,
     SV_ClipToLinks,
     SV_ClipToLinks_Re,
     SV_ClipToLinks_Sig,
+    SV_ClipToLinks_Sig_Re,
     bytesRange,
     bytesBackPos,
 };
 
-typedef struct patch_s {
-    void* addr = NULL;
-    char data[32]{ };
-    patch_s();
-    ~patch_s();
-} patch_t;
-
 typedef struct sigdata_s {
-    ::SourceHook::String Symbol{ };
-    ::SourceHook::CVector < unsigned char > Signature{ };
-    bool IsSymbol = false;
-    ::size_t Offs = false;
+    ::SourceHook::String Sym{ };
+    ::SourceHook::CVector < unsigned char > Sig{ };
+    bool isSym = false;
+    ::size_t Ofs = false;
 } sigdata_t;
 
 C_DLLEXPORT int GetEntityAPI2(::DLL_FUNCTIONS*, int*);
@@ -81,7 +73,6 @@ extern ::META_FUNCTIONS g_MetaFuncTable;
 extern ::meta_globals_s* gpMetaGlobals;
 extern ::meta_util_funcs_s* gpMetaUtilFuncs;
 extern ::gamedll_funcs_t* gpGamedllFuncs;
-extern ::patch_s g_origPatch;
 extern ::edict_s* g_pEntities;
 extern ::cvar_s g_Version;
 extern ::cvar_s g_Enabled;
@@ -104,6 +95,7 @@ extern ::cvar_s* g_pPatch;
 extern ::cvar_s* g_pSolid;
 extern ::cvar_s* g_pDying;
 extern ::cvar_s* g_pObserver;
+extern bool g_Patched;
 extern bool g_reHLDS;
 extern bool g_isEnabled;
 extern unsigned char g_Type;
@@ -115,7 +107,7 @@ extern bool g_doSolid;
 extern unsigned char g_dyingType;
 extern unsigned char g_obsType;
 extern ::size_t g_obsOffsNum;
-extern void* g_pPatchAddr;
+extern unsigned char* g_pPatchAddr;
 extern float g_execTime;
 extern ::SourceHook::CVector < ::sigdata_s > g_Sigs;
 

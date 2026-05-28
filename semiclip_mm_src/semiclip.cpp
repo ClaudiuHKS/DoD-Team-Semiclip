@@ -24,7 +24,6 @@
 ::meta_globals_s* gpMetaGlobals = NULL;
 ::meta_util_funcs_s* gpMetaUtilFuncs = NULL;
 ::gamedll_funcs_t* gpGamedllFuncs = NULL;
-::patch_s g_origPatch{ };
 ::edict_s* g_pEntities = NULL;
 ::cvar_s g_Version{ "semiclip_version", SEMICLIP_VERSION_FULL, FCVAR_SERVER | FCVAR_SPONLY, };
 ::cvar_s g_Enabled{ "semiclip_enabled", "1", };
@@ -45,6 +44,7 @@
 ::cvar_s* g_pPatch = NULL;
 ::cvar_s* g_pDying = NULL;
 ::cvar_s* g_pObserver = NULL;
+bool g_Patched = false;
 bool g_reHLDS = false;
 bool g_isEnabled = false;
 unsigned char g_Type = false;
@@ -55,7 +55,7 @@ bool g_doPatch = false;
 unsigned char g_dyingType = false;
 unsigned char g_obsType = false;
 ::size_t g_obsOffsNum = false;
-void* g_pPatchAddr = NULL;
+unsigned char* g_pPatchAddr = NULL;
 float g_execTime = 0.f;
 ::SourceHook::CVector < ::sigdata_s > g_Sigs{ };
 
@@ -95,25 +95,25 @@ bool readCfg(bool forLinux)
             continue;
         if (false == Line.icmpn("Sig:", 4))
         {
-            sigData.IsSymbol = false;
-            ::vectorizeSignature(Line, sigData.Signature);
+            sigData.isSym = false;
+            ::vectorizeSignature(Line, sigData.Sig);
         }
         else if (false == Line.icmpn("OffsDec:", 8))
         {
             Line.erase(false, 8);
             Line.trim();
-            sigData.Offs = ::strtoull(Line.c_str(), NULL, int(10));
+            sigData.Ofs = ::strtoull(Line.c_str(), NULL, int(10));
         }
         else if (false == Line.icmpn("OffsHex:", 8))
         {
             Line.erase(false, 8);
             Line.trim();
-            sigData.Offs = ::strtoull(Line.c_str(), NULL, int(16));
+            sigData.Ofs = ::strtoull(Line.c_str(), NULL, int(16));
         }
         else
         {
-            sigData.IsSymbol = true;
-            sigData.Symbol = Line;
+            sigData.isSym = true;
+            sigData.Sym = Line;
         }
         ::g_Sigs.push_back(sigData);
     }
@@ -174,7 +174,12 @@ C_DLLEXPORT int Meta_Attach
     ::g_pObsOffs = CVAR_GET_POINTER(::g_obsOffs.name);
     ::g_pObserver = CVAR_GET_POINTER(::g_Observer.name);
     if (!::g_pPatchAddr)
-        LOG_CONSOLE(PLID, "* Semiclip attached with unusable 'semiclip_patch'. Unable to patch engine's SV_ClipToLinks().");
+        LOG_CONSOLE
+        (
+            PLID,
+            "* Semiclip attached with unusable 'semiclip_patch'. "
+            "Unable to patch Engine's '::SV_ClipToLinks()'."
+        );
     return true;
 }
 
@@ -199,18 +204,22 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
     auto pLib = ::dlopen(memInfo.dli_fname, RTLD_LAZY | RTLD_NOLOAD | RTLD_NODELETE);
     if (!pLib)
         pLib = ::dlopen(memInfo.dli_fname, RTLD_NOW);
-    auto pAddr = (const unsigned char*) ::dlsymComplex(pLib, ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Symbol.c_str()); /// By symbol (ReHLDS).
-    if (pAddr)
-        ::g_reHLDS = true;
-    else
-        pAddr = (const unsigned char*) ::dlsymComplex(pLib, ::g_Sigs[::sig_e::SV_ClipToLinks].Symbol.c_str()); /// By symbol (non-ReHLDS).
+    auto pAddr = (const unsigned char*)
+        ::dlsymComplex(pLib, ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Sym.c_str()); /// By symbol (ReHLDS).
+    if (!pAddr)
+        pAddr = (const unsigned char*)
+        ::dlsymComplex(pLib, ::g_Sigs[::sig_e::SV_ClipToLinks].Sym.c_str()); /// By symbol (non-ReHLDS).
     ::dlclose(pLib);
     if (!pAddr)
-    { /// No 'SV_ClipToLinks' symbol found. Search by signature.
+    { /// No 'SV_ClipToLinks' symbol found (Linux). Search by signature.
         struct ::stat memData;
         ::stat(memInfo.dli_fname, &memData);
         ::size_t Addr;
-        if (::findInMemory(memInfo.dli_fbase, memData.st_size, ::g_Sigs[::sig_e::SV_ClipToLinks_Sig].Signature, &Addr, true)) /// By signature.
+        if (::findInMemory(memInfo.dli_fbase, memData.st_size,
+            ::g_Sigs[::sig_e::SV_ClipToLinks_Sig].Sig, &Addr, true)) /// By signature (non-ReHLDS).
+            pAddr = (const unsigned char*)Addr;
+        else if (::findInMemory(memInfo.dli_fbase, memData.st_size,
+            ::g_Sigs[::sig_e::SV_ClipToLinks_Sig_Re].Sig, &Addr, true)) /// By signature (ReHLDS).
             pAddr = (const unsigned char*)Addr;
     }
 #else
@@ -223,86 +232,96 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
     ::VirtualQuery(pGlobalVars /** swds.dll file. */, &memInfo, sizeof memInfo);
     auto pDosHdr = (::_IMAGE_DOS_HEADER*)memInfo.AllocationBase;
     auto pNtHdr = (::_IMAGE_NT_HEADERS*)((::size_t)pDosHdr + (::size_t)pDosHdr->e_lfanew);
-    auto pAddr = ::findStrPush((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage,
-        (const unsigned char*) ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Symbol.c_str(),
-        ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Symbol.size()); /// Function approx. addr. by const. string (ReHLDS).
+    auto pAddr = ::findStr(pDosHdr, pNtHdr, ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Sym.c_str(),
+        ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Sym.size()); /// Function approx. addr. by const. string (ReHLDS).
 #endif
 #ifdef __linux__
     if (!pAddr)
+    {
+        pEngineFuncs->pfnServerPrint("[WARNING] Team Semiclip: Unable to find '::SV_ClipToLinks()' function.\n");
         return; /// 'SV_ClipToLinks' function is missing [Linux] (both signature and symbol failed). Stop.
+    }
 #else
     if (!pAddr)
     { /// Maybe running Windows non-ReHLDS.
-        pAddr = ::findStrPush((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage,
-            (const unsigned char*) ::g_Sigs[::sig_e::SV_ClipToLinks].Symbol.c_str(),
-            ::g_Sigs[::sig_e::SV_ClipToLinks].Symbol.size()); /// Function approx. addr. by const. string (non-ReHLDS).
+        pAddr = ::findStr(pDosHdr, pNtHdr, ::g_Sigs[::sig_e::SV_ClipToLinks].Sym.c_str(),
+            ::g_Sigs[::sig_e::SV_ClipToLinks].Sym.size()); /// Function approx. addr. by const. string (non-ReHLDS).
         if (!pAddr)
         {
-            pAddr = (const unsigned char*) ::GetProcAddress((::HINSTANCE__*)memInfo.AllocationBase, ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Symbol.c_str());
-            if (pAddr)
-                ::g_reHLDS = true;
-            else
+            pAddr = (const unsigned char*) ::GetProcAddress((::HINSTANCE__*)memInfo.AllocationBase,
+                ::g_Sigs[::sig_e::SV_ClipToLinks_Re].Sym.c_str()); /// Windows 'SV_ClipToLinks' function addr. by symbol (ReHLDS).
+            if (!pAddr)
             {
-                pAddr = (const unsigned char*) ::GetProcAddress((::HINSTANCE__*)memInfo.AllocationBase, ::g_Sigs[::sig_e::SV_ClipToLinks].Symbol.c_str());
+                pAddr = (const unsigned char*) ::GetProcAddress((::HINSTANCE__*)memInfo.AllocationBase,
+                    ::g_Sigs[::sig_e::SV_ClipToLinks].Sym.c_str()); /// Windows 'SV_ClipToLinks' function addr. by symbol (non-ReHLDS).
                 if (!pAddr)
                 {
                     ::size_t Addr;
-                    if (::findInMemory((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage, ::g_Sigs[::sig_e::SV_ClipToLinks_Sig].Signature, &Addr, true)) /// By signature.
+                    if (::findInMemory((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage,
+                        ::g_Sigs[::sig_e::SV_ClipToLinks_Sig].Sig, &Addr, true)) /// By signature (Windows, non-ReHLDS).
+                        pAddr = (const unsigned char*)Addr;
+                    else if (::findInMemory((const unsigned char*)pDosHdr, pNtHdr->OptionalHeader.SizeOfImage,
+                        ::g_Sigs[::sig_e::SV_ClipToLinks_Sig_Re].Sig, &Addr, true)) /// By signature (Windows, ReHLDS).
                         pAddr = (const unsigned char*)Addr;
                     else
+                    {
+                        pEngineFuncs->pfnServerPrint("[WARNING] Team Semiclip: Unable to find '::SV_ClipToLinks()' function.\n");
                         return; /// 'SV_ClipToLinks' function is missing (Windows). Stop.
+                    }
                 }
             }
         }
     }
-    else
-        ::g_reHLDS = true;
 #endif
-    if (false == ::g_reHLDS)
-        pAddr = ::memCmp(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Offs,
-            ::g_Sigs[::sig_e::bytesRange].Offs, SOLID_SLIDEBOX, ::g_Sigs[::sig_e::solidByte].Offs);
-    else
-        pAddr = ::memCmp(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Offs,
-            ::g_Sigs[::sig_e::bytesRange].Offs, SOLID_SLIDEBOX, ::g_Sigs[::sig_e::solidByteRe].Offs);
-    if (!pAddr)
+    auto pSrc = ::findMem(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Ofs,
+        ::g_Sigs[::sig_e::bytesRange].Ofs, SOLID_SLIDEBOX, ::g_Sigs[::sig_e::solidByte /* Search non-ReHLDS. **/].Ofs);
+    if (!pSrc)
+    {
+        pSrc = ::findMem(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Ofs,
+            ::g_Sigs[::sig_e::bytesRange].Ofs, SOLID_SLIDEBOX, ::g_Sigs[::sig_e::solidByteRe /** Search ReHLDS. */].Ofs);
+        if (pSrc)
+        {
+            ::g_reHLDS = true;
+            goto endOfFunc;
+        }
+    }
+    if (!pSrc)
+    {
+        pEngineFuncs->pfnServerPrint
+        (
+            "[WARNING] Team Semiclip: Found '::SV_ClipToLinks()' signature, "
+            "symbol or identifier, but did not find required bytes.\n"
+        );
         return;
-    ::g_pPatchAddr = (void*)pAddr;
-}
-
-::patch_s::patch_s()
-{
-    addr = NULL;
-}
-
-::patch_s::~patch_s()
-{
-    addr = NULL;
+    }
+endOfFunc:
+    ::g_pPatchAddr = (unsigned char*)pSrc;
 }
 
 void makePatch()
 {
-    static char Data[32];
-    if (!::g_origPatch.addr && ::g_pPatchAddr)
+    if (false == ::g_Patched && ::g_pPatchAddr)
     {
-        ::g_origPatch.addr = ::g_pPatchAddr;
-        ::memcpy(::g_origPatch.data, ::g_pPatchAddr,
-            false == ::g_reHLDS ? ::g_Sigs[::sig_e::patchBytes].Offs : ::g_Sigs[::sig_e::patchBytesRe].Offs);
-        ::memcpy(Data, ::g_pPatchAddr,
-            false == ::g_reHLDS ? ::g_Sigs[::sig_e::patchBytes].Offs : ::g_Sigs[::sig_e::patchBytesRe].Offs);
-        *(Data + (false == ::g_reHLDS ? ::g_Sigs[::sig_e::solidByte].Offs : ::g_Sigs[::sig_e::solidByteRe].Offs)) =
+        ::allowFullMemAccess(
+            ::g_pPatchAddr + (false == ::g_reHLDS ? ::g_Sigs[::sig_e::solidByte].Ofs : ::g_Sigs[::sig_e::solidByteRe].Ofs),
+            true
+        );
+
+        *(::g_pPatchAddr + (false == ::g_reHLDS ? ::g_Sigs[::sig_e::solidByte].Ofs : ::g_Sigs[::sig_e::solidByteRe].Ofs)) =
             SOLID_NOT;
-        ::memCpy(::g_pPatchAddr, Data,
-            false == ::g_reHLDS ? ::g_Sigs[::sig_e::patchBytes].Offs : ::g_Sigs[::sig_e::patchBytesRe].Offs);
+
+        ::g_Patched = true;
     }
 }
 
 void delPatch()
 {
-    if (::g_origPatch.addr)
+    if (::g_Patched && ::g_pPatchAddr)
     {
-        ::memCpy(::g_origPatch.addr, ::g_origPatch.data,
-            false == ::g_reHLDS ? ::g_Sigs[::sig_e::patchBytes].Offs : ::g_Sigs[::sig_e::patchBytesRe].Offs);
-        ::g_origPatch.addr = NULL;
+        *(::g_pPatchAddr + (false == ::g_reHLDS ? ::g_Sigs[::sig_e::solidByte].Ofs : ::g_Sigs[::sig_e::solidByteRe].Ofs)) =
+            SOLID_SLIDEBOX;
+
+        ::g_Patched = false;
     }
 }
 
