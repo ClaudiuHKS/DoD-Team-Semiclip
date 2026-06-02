@@ -273,12 +273,18 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
         }
     }
 #endif
-    auto pSrc = ::findMem(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Ofs,
-        ::g_Sigs[::sig_e::bytesRange].Ofs, SOLID_SLIDEBOX, ::g_Sigs[::sig_e::solidByte /* Search non-ReHLDS. **/].Ofs);
+    auto pSrc = ::findPair(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Ofs,
+        ::g_Sigs[::sig_e::bytesRange].Ofs,
+        (unsigned char) ::g_Sigs[::sig_e::opCode].Ofs,
+        (unsigned char) ::g_Sigs[::sig_e::byteVal].Ofs,
+        ::g_Sigs[::sig_e::solidByte /* Search non-ReHLDS. **/].Ofs);
     if (!pSrc)
     {
-        pSrc = ::findMem(pAddr - ::g_Sigs[::sig_e::bytesBackPos].Ofs,
-            ::g_Sigs[::sig_e::bytesRange].Ofs, SOLID_SLIDEBOX, ::g_Sigs[::sig_e::solidByteRe /** Search ReHLDS. */].Ofs);
+        pSrc = ::findPair(pAddr - ::g_Sigs[::sig_e::bytesBackPosRe].Ofs,
+            ::g_Sigs[::sig_e::bytesRangeRe].Ofs,
+            (unsigned char) ::g_Sigs[::sig_e::opCodeRe].Ofs,
+            (unsigned char) ::g_Sigs[::sig_e::byteValRe].Ofs,
+            ::g_Sigs[::sig_e::solidByteRe /** Search ReHLDS. */].Ofs);
         if (pSrc)
         {
             ::g_reHLDS = true;
@@ -308,7 +314,7 @@ void makePatch()
         );
 
         *(::g_pPatchAddr + (false == ::g_reHLDS ? ::g_Sigs[::sig_e::solidByte].Ofs : ::g_Sigs[::sig_e::solidByteRe].Ofs)) =
-            SOLID_NOT;
+            false == ::g_reHLDS ? (unsigned char) ::g_Sigs[::sig_e::patchByte].Ofs : (unsigned char) ::g_Sigs[::sig_e::patchByteRe].Ofs;
 
         ::g_Patched = true;
     }
@@ -319,7 +325,7 @@ void delPatch()
     if (::g_Patched && ::g_pPatchAddr)
     {
         *(::g_pPatchAddr + (false == ::g_reHLDS ? ::g_Sigs[::sig_e::solidByte].Ofs : ::g_Sigs[::sig_e::solidByteRe].Ofs)) =
-            SOLID_SLIDEBOX;
+            false == ::g_reHLDS ? (unsigned char) ::g_Sigs[::sig_e::byteVal].Ofs : (unsigned char) ::g_Sigs[::sig_e::byteValRe].Ofs;
 
         ::g_Patched = false;
     }

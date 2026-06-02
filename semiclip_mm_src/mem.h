@@ -13,7 +13,7 @@
 #endif
 
 void allowFullMemAccess(void*, ::size_t);
-const unsigned char* findMem(const unsigned char*, ::size_t, ::size_t, ::size_t);
+const unsigned char* findPair(const unsigned char*, ::size_t, unsigned char, unsigned char, ::size_t);
 
 #ifndef __linux__
 const unsigned char* findStr(::_IMAGE_DOS_HEADER*, ::_IMAGE_NT_HEADERS*, const char*, ::size_t);

@@ -18,11 +18,12 @@ void allowFullMemAccess(void* pAddr, ::size_t Size)
 #endif
 }
 
-const unsigned char* findMem(const unsigned char* pPos, ::size_t Range, ::size_t Ref, ::size_t Pos)
+const unsigned char* findPair
+(const unsigned char* pPos, ::size_t Range, unsigned char Beg, unsigned char Byte, ::size_t Pos)
 {
     auto pEnd = pPos + Range;
     for (; pPos < pEnd; ++pPos)
-        if (*pPos == (unsigned char)'\x83' && *(pPos + Pos) == Ref)
+        if (*pPos == Beg && *(pPos + Pos) == Byte)
             return pPos;
     return NULL;
 }

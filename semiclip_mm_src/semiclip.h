@@ -10,7 +10,7 @@
 #include "Memory.h" /// IDA signature to address.
 
 #define SEMICLIP_VERSION        "2.2+"
-#define SEMICLIP_VERSION_MS     2,2,0,4
+#define SEMICLIP_VERSION_MS     2,2,0,5
 #define SEMICLIP_AUTHOR         "s1lent & claudiuhks"
 #define SEMICLIP_TITLE          "Team Semiclip"
 #define SEMICLIP_TITLE_MS       "MetaMod " SEMICLIP_TITLE
@@ -25,14 +25,22 @@
 #define F_IToE(I) ((::edict_s *)    (::g_pEntities + I))
 
 enum sig_e : unsigned char {
-    solidByte = false,
+    opCode = false,
+    opCodeRe,
+    byteVal,
+    byteValRe,
+    solidByte,
     solidByteRe,
+    patchByte,
+    patchByteRe,
     SV_ClipToLinks,
     SV_ClipToLinks_Re,
     SV_ClipToLinks_Sig,
     SV_ClipToLinks_Sig_Re,
     bytesRange,
+    bytesRangeRe,
     bytesBackPos,
+    bytesBackPosRe,
 };
 
 typedef struct sigdata_s {
