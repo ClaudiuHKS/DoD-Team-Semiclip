@@ -2,7 +2,13 @@
 #ifndef _MEMSRCH_H_
 #define _MEMSRCH_H_
 
+#include <stdint.h>
 #include <stdlib.h>
+#include <immintrin.h>
+
+#ifndef __linux__
+#include <intrin.h>
+#endif
 
 #include <string_compat.h>
 #include <vector_compat.h>

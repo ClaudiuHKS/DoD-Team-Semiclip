@@ -29,52 +29,57 @@ const unsigned char* findPair
 }
 
 #ifndef __linux__
-const unsigned char* findStr
+#if (defined (__i386__) || defined (_M_IX86)) /// x86 Windows.
+const unsigned char* findStr /// x86 Windows.
 (::_IMAGE_DOS_HEADER* pDosHdr, ::_IMAGE_NT_HEADERS* pNtHdr, const char* pString, ::size_t Len)
 {
-    auto pSec = IMAGE_FIRST_SECTION(pNtHdr);
+    const auto pSec = IMAGE_FIRST_SECTION(pNtHdr);
     if (!pSec)
         return NULL;
+    ::size_t Addr;
     unsigned long Size;
-    unsigned short Sec;
-    ::size_t strAddr, Iter;
-    const unsigned char* pBeg;
-    auto Secs = pNtHdr->FileHeader.NumberOfSections;
-    for (Sec = false; Sec < Secs; Sec++)
+    unsigned short Sec = false;
+    const unsigned char* pBeg, * pEnd, * pIter;
+    const auto Secs = pNtHdr->FileHeader.NumberOfSections;
+    for (; Sec < Secs; Sec++)
     {
-        pBeg = (const unsigned char*)pDosHdr + pSec[Sec].VirtualAddress;
-        Size = pSec[Sec].Misc.VirtualSize;
-        for (Iter = false; Iter < Size - Len; Iter++)
-            if (false == ::memcmp(pBeg + Iter, pString, Len))
+        const auto& Hdr = pSec[Sec];
+        if (Hdr.Characteristics & IMAGE_SCN_MEM_EXECUTE)
+            continue;
+        Size = Hdr.Misc.VirtualSize;
+        if (Size < Len)
+            continue;
+        pBeg = (const unsigned char*)pDosHdr + Hdr.VirtualAddress;
+        pEnd = pBeg + (Size - Len);
+        for (pIter = pBeg; pIter <= pEnd; ++pIter)
+            if (*pIter == pString[0] && false == ::memcmp(pIter, pString, Len))
             {
-                strAddr = (::size_t)(pBeg + Iter);
+                Addr = (::size_t)pIter;
                 goto keepUp;
             }
     }
     return NULL;
 keepUp:
-    ::size_t Addr;
-    const unsigned char* pPos;
     for (Sec = false; Sec < Secs; Sec++)
     {
-        if (!(pSec[Sec].Characteristics & IMAGE_SCN_MEM_EXECUTE))
+        const auto& Hdr = pSec[Sec];
+        if (!(Hdr.Characteristics & IMAGE_SCN_MEM_EXECUTE))
             continue;
-        pBeg = (const unsigned char*)pDosHdr + pSec[Sec].VirtualAddress;
-        Size = pSec[Sec].Misc.VirtualSize;
-        for (Iter = false; Iter < Size - 5; Iter++)
-        {
-            pPos = pBeg + Iter;
-            if (pPos[0] == 0x68)
-            {
-                Addr = *(::size_t*)(pPos + true);
-                if (Addr == strAddr)
-                    return pPos;
-            }
-        }
+        Size = Hdr.Misc.VirtualSize;
+        if (Size < 5)
+            continue;
+        pBeg = (const unsigned char*)pDosHdr + Hdr.VirtualAddress;
+        pEnd = pBeg + (Size - 5);
+        for (pIter = pBeg; pIter <= pEnd; ++pIter)
+            if (*pIter == 0x68 && *(unsigned*)(pIter + true) == Addr)
+                return pIter;
     }
     return NULL;
 }
 #else
+#error "findStr() for x64 to be implemented!"
+#endif
+#else /// Linux only below.
 void* dlsymComplex(void* pLib, const char* pSym)
 { /// On Linux, use DWARF module information as well when looking to reveal library symbols (not only '::dlsym').
     auto pAddr = ::dlsym(pLib, pSym);

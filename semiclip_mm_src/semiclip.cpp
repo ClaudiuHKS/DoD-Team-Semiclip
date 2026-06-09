@@ -35,6 +35,8 @@
 ::cvar_s g_Patch{ "semiclip_patch", "1", };
 ::cvar_s g_Dying{ "semiclip_dying", "2", };
 ::cvar_s g_Observer{ "semiclip_observer", "2", };
+::cvar_s g_Solid{ "semiclip_solid", "1", };
+::cvar_s g_solidDis{ "semiclip_soliddis", "32", };
 ::cvar_s* g_pEnabled = NULL;
 ::cvar_s* g_pStyle = NULL;
 ::cvar_s* g_pHead = NULL;
@@ -44,6 +46,10 @@
 ::cvar_s* g_pPatch = NULL;
 ::cvar_s* g_pDying = NULL;
 ::cvar_s* g_pObserver = NULL;
+::cvar_s* g_pSolid = NULL;
+::cvar_s* g_pSolidDis = NULL;
+bool g_doSolid = false;
+float g_solidDisNum = false;
 bool g_Patched = false;
 bool g_reHLDS = false;
 bool g_isEnabled = false;
@@ -63,11 +69,12 @@ bool readCfg(bool forLinux)
 {
     char Buffer[256], Game[64];
     ::g_engfuncs.pfnGetGameDir(Game);
-    ::_snprintf(Buffer, sizeof Buffer, "%s/addons/semiclip/semiclip.ini", Game);
 #ifndef __linux__
+    ::_snprintf_s(Buffer, sizeof Buffer, _TRUNCATE, "%s/addons/semiclip/semiclip.ini", Game);
     ::_iobuf* pConfig;
     ::fopen_s(&pConfig, Buffer, "r");
 #else
+    ::snprintf(Buffer, sizeof Buffer, "%s/addons/semiclip/semiclip.ini", Game);
     ::FILE* pConfig = ::fopen(Buffer, "r");
 #endif
     if (!pConfig)
@@ -164,6 +171,8 @@ C_DLLEXPORT int Meta_Attach
     CVAR_REGISTER(&::g_Dying);
     CVAR_REGISTER(&::g_obsOffs);
     CVAR_REGISTER(&::g_Observer);
+    CVAR_REGISTER(&::g_Solid);
+    CVAR_REGISTER(&::g_solidDis);
     ::g_pEnabled = CVAR_GET_POINTER(::g_Enabled.name);
     ::g_pStyle = CVAR_GET_POINTER(::g_Style.name);
     ::g_pHead = CVAR_GET_POINTER(::g_Head.name);
@@ -173,6 +182,8 @@ C_DLLEXPORT int Meta_Attach
     ::g_pDying = CVAR_GET_POINTER(::g_Dying.name);
     ::g_pObsOffs = CVAR_GET_POINTER(::g_obsOffs.name);
     ::g_pObserver = CVAR_GET_POINTER(::g_Observer.name);
+    ::g_pSolid = CVAR_GET_POINTER(::g_Solid.name);
+    ::g_pSolidDis = CVAR_GET_POINTER(::g_solidDis.name);
     if (!::g_pPatchAddr)
         LOG_CONSOLE
         (
@@ -191,12 +202,35 @@ C_DLLEXPORT int Meta_Detach(::PLUG_LOADTIME, ::PL_UNLOAD_REASON)
 
 C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalvars_t* pGlobalVars)
 {
+    const auto Beg = double(::clock());
     ::memcpy(&::g_engfuncs, pEngineFuncs, sizeof(::enginefuncs_s));
     ::gpGlobals = pGlobalVars;
 #ifdef __linux__
     if (false == ::readCfg(true))
     {
         pEngineFuncs->pfnServerPrint("[WARNING] Team Semiclip: Can't read 'addons/semiclip/semiclip.ini'.\n");
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        pEngineFuncs->pfnServerPrint(Msg);
         return;
     }
     ::Dl_info memInfo;
@@ -226,6 +260,28 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
     if (false == ::readCfg(false))
     {
         pEngineFuncs->pfnServerPrint("[WARNING] Team Semiclip: Can't read 'addons/semiclip/semiclip.ini'.\n");
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        pEngineFuncs->pfnServerPrint(Msg);
         return;
     }
     ::_MEMORY_BASIC_INFORMATION memInfo;
@@ -239,6 +295,28 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
     if (!pAddr)
     {
         pEngineFuncs->pfnServerPrint("[WARNING] Team Semiclip: Unable to find '::SV_ClipToLinks()' function.\n");
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        pEngineFuncs->pfnServerPrint(Msg);
         return; /// 'SV_ClipToLinks' function is missing [Linux] (both signature and symbol failed). Stop.
     }
 #else
@@ -266,6 +344,28 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
                     else
                     {
                         pEngineFuncs->pfnServerPrint("[WARNING] Team Semiclip: Unable to find '::SV_ClipToLinks()' function.\n");
+
+                        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+                        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+                        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+                        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+                        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+                        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+                        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+                        pEngineFuncs->pfnServerPrint(Msg);
                         return; /// 'SV_ClipToLinks' function is missing (Windows). Stop.
                     }
                 }
@@ -298,10 +398,54 @@ C_DLLEXPORT void WINAPI GiveFnptrsToDll(::enginefuncs_s* pEngineFuncs, ::globalv
             "[WARNING] Team Semiclip: Found '::SV_ClipToLinks()' signature, "
             "symbol or identifier, but did not find required bytes.\n"
         );
+
+        char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+        ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+        ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+        pEngineFuncs->pfnServerPrint(Msg);
         return;
     }
 endOfFunc:
     ::g_pPatchAddr = (unsigned char*)pSrc;
+
+    char Msg[128];
+#ifdef __AVX2__
+#ifndef __linux__
+    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+    ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX2).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#elif defined (__AVX__)
+#ifndef __linux__
+    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+    ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (AVX).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#else
+#ifndef __linux__
+    ::_snprintf_s(Msg, sizeof Msg, _TRUNCATE, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#else
+    ::_snprintf(Msg, sizeof Msg, "[INFO] " SEMICLIP_TITLE " took %f sec. to load (SSE).\n", float((double(::clock()) - Beg) / double(CLOCKS_PER_SEC)));
+#endif
+#endif
+    pEngineFuncs->pfnServerPrint(Msg);
 }
 
 void makePatch()
@@ -554,37 +698,47 @@ int AddToFullPack_Post
     static float Dis;
     if (pState && pHost && pEntity && isPlayer && pHost != pEntity && ::canPass_Pack(pHost, pEntity))
     {
-        switch (::g_Type)
-        {
-        case 1:
-        {
-            Dis = (pEntity->v.origin - pHost->v.origin).Length();
-            if (Dis < 256.f)
+        Dis = (pEntity->v.origin - pHost->v.origin).Length();
+        if (Dis < 256.f)
+            switch (::g_Type)
+            {
+            case false:
+            {
+                if (::g_doSolid && Dis < ::g_solidDisNum)
+                    pState->solid = SOLID_NOT;
+                break;
+            }
+            case 1:
             {
                 pState->rendermode = ::kRenderTransAlpha;
                 pState->renderamt = int(Dis * 255.f / 255.f); /// 0 <-> 255
+                if (::g_doSolid && Dis < ::g_solidDisNum)
+                    pState->solid = SOLID_NOT;
+                break;
             }
-            break;
-        }
-        case 2:
-        {
-            if (!::isOut(pEntity, pHost))
+            case 2:
             {
-                pState->rendermode = ::kRenderTransAlpha;
-                pState->renderamt = false;
+                if (!::isOut(pEntity, pHost))
+                {
+                    pState->rendermode = ::kRenderTransAlpha;
+                    pState->renderamt = false;
+                }
+                if (::g_doSolid && Dis < ::g_solidDisNum)
+                    pState->solid = SOLID_NOT;
+                break;
             }
-            break;
-        }
-        default:
-        {
-            if (!::isOut(pEntity, pHost))
+            default:
             {
-                pState->rendermode = ::kRenderTransAlpha;
-                pState->renderamt = int((pEntity->v.origin - pHost->v.origin).Length() * 255.f / 255.f);
+                if (!::isOut(pEntity, pHost))
+                {
+                    pState->rendermode = ::kRenderTransAlpha;
+                    pState->renderamt = int(Dis * 255.f / 255.f);
+                }
+                if (::g_doSolid && Dis < ::g_solidDisNum)
+                    pState->solid = SOLID_NOT;
+                break;
             }
-            break;
-        }
-        }
+            }
     }
     ::gpMetaGlobals->mres = ::META_RES::MRES_IGNORED;
     return false;
@@ -611,10 +765,18 @@ void StartFrame()
         if (pPfxPos)
         {
             *(pPfxPos + 1) = false;
-            ::_snprintf(Cmd, sizeof Cmd, "exec \"addons/semiclip/maps/%s.cfg\"\n", Pfx);
+#ifdef __linux__
+            ::snprintf(Cmd, sizeof Cmd, "exec \"addons/semiclip/maps/%s.cfg\"\n", Pfx);
+#else
+            ::_snprintf_s(Cmd, sizeof Cmd, _TRUNCATE, "exec \"addons/semiclip/maps/%s.cfg\"\n", Pfx);
+#endif
             SERVER_COMMAND(Cmd);
         }
-        ::_snprintf(Cmd, sizeof Cmd, "exec \"addons/semiclip/maps/%s.cfg\"\n", pMap);
+#ifdef __linux__
+        ::snprintf(Cmd, sizeof Cmd, "exec \"addons/semiclip/maps/%s.cfg\"\n", pMap);
+#else
+        ::_snprintf_s(Cmd, sizeof Cmd, _TRUNCATE, "exec \"addons/semiclip/maps/%s.cfg\"\n", pMap);
+#endif
         SERVER_COMMAND(Cmd);
         ::g_execTime = 0.f;
         ::g_pApiFuncTable->pfnStartFrame = NULL;
@@ -642,6 +804,9 @@ void OnClientPutInServer_Post(::edict_s*)
     ::g_dyingType = (unsigned char) ::g_pDying->value;
     ::g_obsOffsNum = (::size_t) ::g_pObsOffs->value;
     ::g_obsType = (unsigned char) ::g_pObserver->value;
+    ::g_solidDisNum = (float) ::g_pSolidDis->value;
+    ::g_doSolid = bool(::g_pSolid->value);
+
     switch (::g_doPatch)
     {
     case true:
@@ -655,24 +820,12 @@ void OnClientPutInServer_Post(::edict_s*)
         break;
     }
     }
-    switch (::g_Type)
-    {
-    case 1: case 2: case 3:
-    {
-        ::g_pApiFuncTable_Post->pfnAddToFullPack = ::AddToFullPack_Post;
-        break;
-    }
-    default:
-    {
-        ::g_pApiFuncTable_Post->pfnAddToFullPack = NULL;
-        break;
-    }
-    }
     switch (::g_isEnabled)
     {
     case true:
     {
         ::g_pApiFuncTable->pfnPM_Move = ::PM_Move;
+        ::g_pApiFuncTable_Post->pfnAddToFullPack = ::AddToFullPack_Post;
         break;
     }
     default:

@@ -2,6 +2,8 @@
 #ifndef _MAIN_H_
 #define _MAIN_H_
 
+#include <time.h>
+
 #include "extdll.h"
 #include "meta_api.h"
 #include "pm_defs.h"
@@ -9,8 +11,16 @@
 #include "mem.h"
 #include "Memory.h" /// IDA signature to address.
 
+#if defined (__AVX2__) && !defined (__avx2__)
+#define __avx2__ 1
+#endif
+
+#if defined (__AVX__) && !defined (__avx__)
+#define __avx__ 1
+#endif
+
 #define SEMICLIP_VERSION        "2.2+"
-#define SEMICLIP_VERSION_MS     2,2,0,5
+#define SEMICLIP_VERSION_MS     2,2,0,6
 #define SEMICLIP_AUTHOR         "s1lent & claudiuhks"
 #define SEMICLIP_TITLE          "Team Semiclip"
 #define SEMICLIP_TITLE_MS       "MetaMod " SEMICLIP_TITLE
@@ -91,6 +101,7 @@ extern ::cvar_s g_teamOffs;
 extern ::cvar_s g_obsOffs;
 extern ::cvar_s g_Patch;
 extern ::cvar_s g_Solid;
+extern ::cvar_s g_solidDis;
 extern ::cvar_s g_Dying;
 extern ::cvar_s g_Observer;
 extern ::cvar_s* g_pEnabled;
@@ -101,6 +112,7 @@ extern ::cvar_s* g_pTeamOffs;
 extern ::cvar_s* g_pObsOffs;
 extern ::cvar_s* g_pPatch;
 extern ::cvar_s* g_pSolid;
+extern ::cvar_s* g_pSolidDis;
 extern ::cvar_s* g_pDying;
 extern ::cvar_s* g_pObserver;
 extern bool g_Patched;
@@ -115,6 +127,7 @@ extern bool g_doSolid;
 extern unsigned char g_dyingType;
 extern unsigned char g_obsType;
 extern ::size_t g_obsOffsNum;
+extern float g_solidDisNum;
 extern unsigned char* g_pPatchAddr;
 extern float g_execTime;
 extern ::SourceHook::CVector < ::sigdata_s > g_Sigs;
